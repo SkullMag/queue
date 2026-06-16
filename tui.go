@@ -20,6 +20,14 @@ var (
 	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
 
+// displayName is the label shown for a task: its name if set, else the command.
+func displayName(t TaskView) string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return t.Cmd
+}
+
 func statusSymbol(s string) string {
 	switch s {
 	case "pending":
@@ -124,7 +132,7 @@ func (m tuiModel) View() string {
 	}
 	for _, t := range m.tasks {
 		st := statusStyle(t.Status)
-		line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), t.Cmd)
+		line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
 		b.WriteString(st.Render(line) + "\n")
 	}
 
@@ -155,7 +163,7 @@ func runTUI() error {
 		}
 	}()
 
-	p := tea.NewProgram(tuiModel{conn: conn, states: states})
+	p := tea.NewProgram(tuiModel{conn: conn, states: states}, tea.WithAltScreen())
 	_, err = p.Run()
 	conn.Close()
 	return err

@@ -10,16 +10,18 @@ import (
 
 // Request is sent client -> daemon.
 type Request struct {
-	Type string   `json:"type"`          // "add" | "subscribe" | "list" | "shutdown"
+	Type string   `json:"type"`           // "add" | "subscribe" | "list" | "shutdown"
 	Cmd  string   `json:"cmd,omitempty"`
-	Dir  string   `json:"dir,omitempty"` // working directory to run the command in
-	Env  []string `json:"env,omitempty"` // environment of the submitting shell
+	Name string   `json:"name,omitempty"` // optional human-friendly job label
+	Dir  string   `json:"dir,omitempty"`  // working directory to run the command in
+	Env  []string `json:"env,omitempty"`  // environment of the submitting shell
 }
 
 // TaskView is the daemon's view of a single task, sent to clients.
 type TaskView struct {
 	ID        int      `json:"id"`
 	Cmd       string   `json:"cmd"`
+	Name      string   `json:"name,omitempty"`       // optional human-friendly job label
 	Dir       string   `json:"dir,omitempty"`        // working directory for the command
 	Status    string   `json:"status"`               // pending | running | done | failed
 	StartedMs int64    `json:"started_ms,omitempty"` // when a running task began
@@ -33,15 +35,24 @@ type StateMsg struct {
 	Tasks []TaskView `json:"tasks"`
 }
 
+// queueDir is the stable per-user state directory. A fixed path (rather than
+// $TMPDIR) keeps the socket consistent across shells and the launchd agent.
+func queueDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return os.TempDir()
+	}
+	return filepath.Join(home, ".queue")
+}
+
 // sockPath returns the Unix socket path shared by daemon and clients.
 func sockPath() string {
-	dir := os.TempDir()
-	return filepath.Join(dir, "queue.sock")
+	return filepath.Join(queueDir(), "queue.sock")
 }
 
 // logDir holds one log file per task (combined stdout+stderr).
 func logDir() string {
-	return filepath.Join(os.TempDir(), "queue-logs")
+	return filepath.Join(queueDir(), "logs")
 }
 
 // logPath returns the log file path for a given task ID.

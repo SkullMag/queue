@@ -27,6 +27,7 @@ type daemon struct {
 // runDaemon is the entry point for `queue daemon`. It runs until the process
 // is stopped (`queue stop`, a signal, or reboot).
 func runDaemon() error {
+	os.MkdirAll(queueDir(), 0o755) // ensure the socket's directory exists
 	ln, err := listen(sockPath())
 	if err != nil {
 		if errors.Is(err, errAlreadyRunning) {
@@ -98,7 +99,7 @@ func (d *daemon) handle(conn net.Conn) {
 		case "add":
 			// Multiple adds may arrive on one connection; processing them
 			// here (one goroutine per connection) keeps submit order.
-			d.add(req.Cmd, req.Dir, req.Env)
+			d.add(req.Cmd, req.Name, req.Dir, req.Env)
 		case "list":
 			d.writeState(conn)
 			conn.Close()
@@ -127,10 +128,10 @@ func (d *daemon) handle(conn net.Conn) {
 }
 
 // add appends a task and enqueues it for the worker.
-func (d *daemon) add(cmd, dir string, env []string) {
+func (d *daemon) add(cmd, name, dir string, env []string) {
 	d.mu.Lock()
 	d.nextID++
-	t := &TaskView{ID: d.nextID, Cmd: cmd, Dir: dir, Env: env, Status: "pending"}
+	t := &TaskView{ID: d.nextID, Cmd: cmd, Name: name, Dir: dir, Env: env, Status: "pending"}
 	d.tasks = append(d.tasks, t)
 	d.work <- t // buffered; serialized under the lock to preserve order
 	d.mu.Unlock()
@@ -173,9 +174,9 @@ func (d *daemon) worker() {
 		d.broadcast()
 
 		if err != nil {
-			notify("Queue: command failed", t.Cmd)
+			notify("Queue: command failed", displayName(*t))
 		} else {
-			notify("Queue: command finished", t.Cmd)
+			notify("Queue: command finished", displayName(*t))
 		}
 	}
 }

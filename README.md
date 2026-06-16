@@ -21,10 +21,30 @@ go build -o queue .
 ```sh
 queue                          # attach the TUI (starts the daemon if needed)
 queue add <command>            # submit a command (all args join into one command)
+queue add --name <label> <cmd> # submit with a human-friendly label (-n also works)
 queue ls                       # print a one-shot snapshot of the queue
+queue logs <id>                # print a task's captured output
+queue tail [id]                # follow a task's output live (running task if no id)
 queue stop                     # stop the daemon and clear the queue
+queue install                  # always-run the daemon via a launchd agent
+queue uninstall                # remove the launchd agent
 queue daemon                   # run the daemon (started automatically; rarely needed)
 ```
+
+## Always-on daemon
+
+By default the daemon is auto-spawned on first use and lives until you
+`queue stop` it or reboot. To keep it running permanently — started at login
+and automatically restarted if it ever exits — install it as a launchd agent:
+
+```sh
+queue install     # writes ~/Library/LaunchAgents/com.queue.daemon.plist and loads it
+queue uninstall   # unloads and removes it
+```
+
+State lives under `~/.queue/` (socket, per-task logs, daemon log). The queue is
+held in memory, so the *daemon* survives logout/reboot once installed, but the
+*job list* resets if the daemon process itself restarts (crash or reboot).
 
 `queue add` joins all its arguments into a single command, so quoting is
 optional for plain words (`queue add echo hello world`). Quote when you use
