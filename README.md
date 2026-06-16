@@ -66,7 +66,10 @@ queue add "go test ./..." "sleep 5"
 ```
 
 Status symbols: `○` pending · `◐` running · `✓` done · `✗` failed.
-Press `q` or `ctrl+c` to quit the TUI (the daemon keeps running).
+
+In the TUI, move the selection with `↑`/`↓` (or `k`/`j`) and press `t` to tail
+the selected task's output live; `q`/`esc` returns to the list. Press `q` or
+`ctrl+c` to quit the TUI (the daemon keeps running).
 
 ## Architecture
 
