@@ -1,0 +1,6 @@
+# Compiled binary
+/queue
+
+# Go build/test artifacts
+*.test
+*.out
