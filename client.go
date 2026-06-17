@@ -170,7 +170,7 @@ func findTask(st StateMsg, id int) *TaskView {
 }
 
 // listTasks prints a one-shot snapshot of the queue.
-func listTasks() error {
+func listTasks(reverse bool) error {
 	st, err := fetchState()
 	if err != nil {
 		fmt.Println("queue is empty (no daemon running)")
@@ -180,8 +180,17 @@ func listTasks() error {
 		fmt.Println("queue is empty")
 		return nil
 	}
-	for _, t := range st.Tasks {
-		fmt.Printf("%3d  %s  %-7s  %s\n", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
+	tasks := st.Tasks
+	if reverse {
+		// Iterate in reverse order
+		for i := len(tasks) - 1; i >= 0; i-- {
+			t := tasks[i]
+			fmt.Printf("%3d  %s  %-7s  %s\n", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
+		}
+	} else {
+		for _, t := range tasks {
+			fmt.Printf("%3d  %s  %-7s  %s\n", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
+		}
 	}
 	return nil
 }

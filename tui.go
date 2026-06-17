@@ -90,6 +90,16 @@ type tuiModel struct {
 	tailing bool
 	tailID  int
 	tailLog string
+
+	// for vim-style gg movement
+	lastKey     string
+	lastKeyTime time.Time
+
+	// for number-prefixed movements (e.g., 5j, 10G)
+	countBuffer string
+
+	// reverse order (newest first)
+	reverseOrder bool
 }
 
 type stateMsg StateMsg
@@ -115,6 +125,35 @@ func (m tuiModel) Init() tea.Cmd {
 	return tea.Batch(waitForState(m.states), tick())
 }
 
+// getCount returns the numeric count from the buffer and clears it.
+// Returns 1 if buffer is empty (default count).
+func (m *tuiModel) getCount() int {
+	if m.countBuffer == "" {
+		return 1
+	}
+	count := 0
+	fmt.Sscanf(m.countBuffer, "%d", &count)
+	m.countBuffer = ""
+	if count == 0 {
+		return 1
+	}
+	return count
+}
+
+// getTaskAtCursor returns the task at the current cursor position,
+// accounting for reverse order display.
+func (m *tuiModel) getTaskAtCursor() *TaskView {
+	if m.cursor >= len(m.tasks) || m.cursor < 0 {
+		return nil
+	}
+	if m.reverseOrder {
+		// In reverse mode, cursor 0 is the last task
+		idx := len(m.tasks) - 1 - m.cursor
+		return &m.tasks[idx]
+	}
+	return &m.tasks[m.cursor]
+}
+
 func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -130,23 +169,86 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		switch msg.String() {
+		key := msg.String()
+
+		// Handle number keys for count prefix
+		if len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
+			m.countBuffer += key
+			return m, nil
+		}
+
+		switch key {
 		case "q", "ctrl+c":
+			m.countBuffer = "" // clear on quit
 			return m, tea.Quit
 		case "down", "j":
-			if m.cursor < len(m.tasks)-1 {
-				m.cursor++
+			count := m.getCount()
+			m.cursor += count
+			if m.cursor >= len(m.tasks) {
+				m.cursor = len(m.tasks) - 1
 			}
 		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+			count := m.getCount()
+			m.cursor -= count
+			if m.cursor < 0 {
+				m.cursor = 0
 			}
+		case "g":
+			// gg or Ngg: go to top or line N
+			if m.lastKey == "g" && time.Since(m.lastKeyTime) < 500*time.Millisecond {
+				count := m.getCount()
+				if count == 1 {
+					// gg: go to top
+					m.cursor = 0
+				} else {
+					// Ngg: go to task N (1-indexed)
+					m.cursor = count - 1
+					if m.cursor < 0 {
+						m.cursor = 0
+					}
+					if m.cursor >= len(m.tasks) {
+						m.cursor = len(m.tasks) - 1
+					}
+				}
+				m.lastKey = ""
+			} else {
+				m.lastKey = "g"
+				m.lastKeyTime = time.Now()
+			}
+		case "G":
+			count := m.getCount()
+			if count == 1 {
+				// G: go to bottom
+				if len(m.tasks) > 0 {
+					m.cursor = len(m.tasks) - 1
+				}
+			} else {
+				// NG: go to task N (1-indexed)
+				m.cursor = count - 1
+				if m.cursor < 0 {
+					m.cursor = 0
+				}
+				if m.cursor >= len(m.tasks) {
+					m.cursor = len(m.tasks) - 1
+				}
+			}
+		case "r":
+			m.countBuffer = "" // clear count on action
+			m.reverseOrder = !m.reverseOrder
 		case "t", "enter":
-			if m.cursor < len(m.tasks) {
+			m.countBuffer = "" // clear count on action
+			if t := m.getTaskAtCursor(); t != nil {
 				m.tailing = true
-				m.tailID = m.tasks[m.cursor].ID
+				m.tailID = t.ID
 				m.tailLog = readLog(m.tailID)
 			}
+		default:
+			// Clear count buffer on unrecognized key
+			m.countBuffer = ""
+		}
+		// Clear lastKey if it's not 'g' and some time has passed
+		if key != "g" && time.Since(m.lastKeyTime) > 500*time.Millisecond {
+			m.lastKey = ""
 		}
 	case stateMsg:
 		m.tasks = msg.Tasks
@@ -190,17 +292,33 @@ func (m tuiModel) View() string {
 	if len(m.tasks) == 0 {
 		b.WriteString(pendingStyle.Render("  (empty — submit with `queue add \"cmd\"`)") + "\n")
 	}
-	for i, t := range m.tasks {
-		line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
-		if i == m.cursor {
-			line = "▌ " + line
-			b.WriteString(selectedStyle.Render(line) + "\n")
-		} else {
-			b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
+
+	if m.reverseOrder {
+		// Display in reverse order (newest first)
+		for i := len(m.tasks) - 1; i >= 0; i-- {
+			t := m.tasks[i]
+			line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
+			displayIdx := len(m.tasks) - 1 - i
+			if displayIdx == m.cursor {
+				line = "▌ " + line
+				b.WriteString(selectedStyle.Render(line) + "\n")
+			} else {
+				b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
+			}
+		}
+	} else {
+		for i, t := range m.tasks {
+			line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
+			if i == m.cursor {
+				line = "▌ " + line
+				b.WriteString(selectedStyle.Render(line) + "\n")
+			} else {
+				b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
+			}
 		}
 	}
 
-	b.WriteString("\n" + helpStyle.Render("↑/↓ move · t tail selected · q quit"))
+	b.WriteString("\n" + helpStyle.Render("j/k/↑/↓ move · gg top · G bottom · #j/k/G jump · r reverse · t tail · q quit"))
 	return b.String()
 }
 
@@ -266,7 +384,7 @@ func runTUI() error {
 		}
 	}()
 
-	p := tea.NewProgram(tuiModel{conn: conn, states: states}, tea.WithAltScreen())
+	p := tea.NewProgram(tuiModel{conn: conn, states: states, reverseOrder: true}, tea.WithAltScreen())
 	_, err = p.Run()
 	conn.Close()
 	return err

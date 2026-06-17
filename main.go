@@ -12,7 +12,8 @@ usage:
   queue                       attach the TUI (starts the daemon if needed)
   queue add [--name <l>] [--wait] <cmd> submit a command (optionally labeled);
                               --wait blocks until it finishes, exiting with its status
-  queue ls                    print a one-shot snapshot of the queue
+  queue ls [--reverse]        print a one-shot snapshot of the queue
+                              --reverse/-r shows newest tasks first
   queue logs <id>             print the output of a task by its id
   queue tail [id]             follow a task's output live (running task if no id)
   queue stop                  stop the daemon and clear the queue
@@ -70,7 +71,11 @@ func main() {
 			err = addTask(strings.Join(rest, " "), name)
 		}
 	case args[0] == "ls", args[0] == "list":
-		err = listTasks()
+		reverse := false
+		if len(args) > 1 && (args[1] == "--reverse" || args[1] == "-r") {
+			reverse = true
+		}
+		err = listTasks(reverse)
 	case args[0] == "stop":
 		err = stopDaemon()
 	case args[0] == "install":
