@@ -10,7 +10,8 @@ const usage = `queue — run shell commands through a background queue
 
 usage:
   queue                       attach the TUI (starts the daemon if needed)
-  queue add [--name <l>] <cmd> submit a command (optionally labeled)
+  queue add [--name <l>] [--wait] <cmd> submit a command (optionally labeled);
+                              --wait blocks until it finishes, exiting with its status
   queue ls                    print a one-shot snapshot of the queue
   queue logs <id>             print the output of a task by its id
   queue tail [id]             follow a task's output live (running task if no id)
@@ -30,25 +31,44 @@ func main() {
 	case args[0] == "daemon":
 		err = runDaemon()
 	case args[0] == "add":
-		// Optional leading --name/-n flag, then the command. The command is
-		// all remaining args joined, so quoting is optional:
-		//   queue add echo hello world            -> "echo hello world"
-		//   queue add --name build make release   -> name "build", cmd "make release"
+		// Optional leading --name/-n and --wait/-w flags (in any order), then
+		// the command. The command is all remaining args joined, so quoting is
+		// optional:
+		//   queue add echo hello world                  -> "echo hello world"
+		//   queue add --name build make release         -> name "build", cmd "make release"
+		//   queue add --wait --name build make release  -> submit, then block until it finishes
 		rest := args[1:]
 		name := ""
-		switch {
-		case len(rest) >= 1 && strings.HasPrefix(rest[0], "--name="):
-			name = strings.TrimPrefix(rest[0], "--name=")
-			rest = rest[1:]
-		case len(rest) >= 2 && (rest[0] == "--name" || rest[0] == "-n"):
-			name = rest[1]
-			rest = rest[2:]
+		wait := false
+		for len(rest) > 0 {
+			switch {
+			case strings.HasPrefix(rest[0], "--name="):
+				name = strings.TrimPrefix(rest[0], "--name=")
+				rest = rest[1:]
+			case rest[0] == "--name" || rest[0] == "-n":
+				if len(rest) < 2 {
+					fmt.Fprintln(os.Stderr, "usage: queue add [--name <label>] [--wait] <command>")
+					os.Exit(1)
+				}
+				name = rest[1]
+				rest = rest[2:]
+			case rest[0] == "--wait" || rest[0] == "-w":
+				wait = true
+				rest = rest[1:]
+			default:
+				goto cmdParsed
+			}
 		}
+	cmdParsed:
 		if len(rest) == 0 {
-			fmt.Fprintln(os.Stderr, "usage: queue add [--name <label>] <command>")
+			fmt.Fprintln(os.Stderr, "usage: queue add [--name <label>] [--wait] <command>")
 			os.Exit(1)
 		}
-		err = addTask(strings.Join(rest, " "), name)
+		if wait {
+			err = addTaskWait(strings.Join(rest, " "), name)
+		} else {
+			err = addTask(strings.Join(rest, " "), name)
+		}
 	case args[0] == "ls", args[0] == "list":
 		err = listTasks()
 	case args[0] == "stop":

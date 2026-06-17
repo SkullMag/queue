@@ -99,7 +99,15 @@ func (d *daemon) handle(conn net.Conn) {
 		case "add":
 			// Multiple adds may arrive on one connection; processing them
 			// here (one goroutine per connection) keeps submit order.
-			d.add(req.Cmd, req.Name, req.Dir, req.Env)
+			id := d.add(req.Cmd, req.Name, req.Dir, req.Env)
+			// A waiting client needs the assigned id to follow the task to
+			// completion; hand it back, then close (it polls state + log).
+			if req.Wait {
+				data, _ := json.Marshal(AddedMsg{Type: "added", ID: id})
+				conn.Write(append(data, '\n'))
+				conn.Close()
+				return
+			}
 		case "list":
 			d.writeState(conn)
 			conn.Close()
@@ -127,15 +135,17 @@ func (d *daemon) handle(conn net.Conn) {
 	}
 }
 
-// add appends a task and enqueues it for the worker.
-func (d *daemon) add(cmd, name, dir string, env []string) {
+// add appends a task and enqueues it for the worker, returning its id.
+func (d *daemon) add(cmd, name, dir string, env []string) int {
 	d.mu.Lock()
 	d.nextID++
-	t := &TaskView{ID: d.nextID, Cmd: cmd, Name: name, Dir: dir, Env: env, Status: "pending"}
+	id := d.nextID
+	t := &TaskView{ID: id, Cmd: cmd, Name: name, Dir: dir, Env: env, Status: "pending"}
 	d.tasks = append(d.tasks, t)
 	d.work <- t // buffered; serialized under the lock to preserve order
 	d.mu.Unlock()
 	d.broadcast()
+	return id
 }
 
 // worker runs queued tasks one at a time.

@@ -64,6 +64,57 @@ func addTask(cmd, name string) error {
 	return nil
 }
 
+// addTaskWait submits a command and blocks until it finishes, streaming its
+// output live. It returns an error (so the caller exits non-zero) if the task
+// fails. Designed for unattended callers that need a build's exit status.
+func addTaskWait(cmd, name string) error {
+	conn, err := connect()
+	if err != nil {
+		return err
+	}
+	dir, _ := os.Getwd()
+	req := Request{Type: "add", Cmd: cmd, Name: name, Dir: dir, Env: os.Environ(), Wait: true}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		conn.Close()
+		return err
+	}
+	var added AddedMsg
+	err = json.NewDecoder(conn).Decode(&added)
+	conn.Close()
+	if err != nil {
+		return fmt.Errorf("daemon did not return a task id: %w", err)
+	}
+	if name != "" {
+		fmt.Printf("queued: %s (%s) [id %d]\n", name, cmd, added.ID)
+	} else {
+		fmt.Printf("queued: %s [id %d]\n", cmd, added.ID)
+	}
+	return waitTask(added.ID)
+}
+
+// waitTask blocks until task id reaches a terminal status, streaming its output
+// (including time spent pending in the queue). Returns an error if it failed.
+func waitTask(id int) error {
+	if st, err := fetchState(); err == nil && findTask(st, id) == nil {
+		return fmt.Errorf("no such task %d", id)
+	}
+	if err := followLog(id); err != nil {
+		return err
+	}
+	st, err := fetchState()
+	if err != nil {
+		return err
+	}
+	t := findTask(st, id)
+	if t == nil {
+		return fmt.Errorf("task %d disappeared (daemon restarted)", id)
+	}
+	if t.Status == "failed" {
+		return fmt.Errorf("task %d failed", id)
+	}
+	return nil
+}
+
 // stopDaemon asks a running daemon to exit (clearing its queue).
 func stopDaemon() error {
 	conn, err := net.Dial("unix", sockPath())

@@ -15,6 +15,14 @@ type Request struct {
 	Name string   `json:"name,omitempty"` // optional human-friendly job label
 	Dir  string   `json:"dir,omitempty"`  // working directory to run the command in
 	Env  []string `json:"env,omitempty"`  // environment of the submitting shell
+	Wait bool     `json:"wait,omitempty"` // on "add": reply with the assigned id so the client can block on it
+}
+
+// AddedMsg is the daemon's reply to an "add" request made with Wait set: it
+// carries the id assigned to the new task so the client can follow it.
+type AddedMsg struct {
+	Type string `json:"type"` // "added"
+	ID   int    `json:"id"`
 }
 
 // TaskView is the daemon's view of a single task, sent to clients.
