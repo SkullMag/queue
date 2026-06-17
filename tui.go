@@ -291,32 +291,57 @@ func (m tuiModel) View() string {
 
 	if len(m.tasks) == 0 {
 		b.WriteString(pendingStyle.Render("  (empty — submit with `queue add \"cmd\"`)") + "\n")
+		b.WriteString("\n" + helpStyle.Render("j/k/↑/↓ move · gg top · G bottom · #j/k/G jump · r reverse · t tail · q quit"))
+		return b.String()
 	}
 
-	if m.reverseOrder {
-		// Display in reverse order (newest first)
-		for i := len(m.tasks) - 1; i >= 0; i-- {
-			t := m.tasks[i]
-			line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
-			displayIdx := len(m.tasks) - 1 - i
-			if displayIdx == m.cursor {
-				b.WriteString(markerStyle.Render("▌ ") + statusStyle(t.Status).Render(line) + "\n")
-			} else {
-				b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
-			}
-		}
-	} else {
-		for i, t := range m.tasks {
-			line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
-			if i == m.cursor {
-				b.WriteString(markerStyle.Render("▌ ") + statusStyle(t.Status).Render(line) + "\n")
-			} else {
-				b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
-			}
+	// Order tasks for display: index 0 is the top row, matching m.cursor.
+	order := make([]int, len(m.tasks))
+	for i := range order {
+		if m.reverseOrder {
+			order[i] = len(m.tasks) - 1 - i // newest first
+		} else {
+			order[i] = i
 		}
 	}
 
-	b.WriteString("\n" + helpStyle.Render("j/k/↑/↓ move · gg top · G bottom · #j/k/G jump · r reverse · t tail · q quit"))
+	// Window over the ordered list so the view never overflows the screen.
+	// Reserve rows for the title (2), blank line, and footer (2).
+	visible := m.height - 5
+	if visible <= 0 {
+		visible = 10
+	}
+	start := 0
+	if len(order) > visible {
+		// Keep the cursor inside the window, scrolling as it moves.
+		start = m.cursor - visible/2
+		if start < 0 {
+			start = 0
+		}
+		if start > len(order)-visible {
+			start = len(order) - visible
+		}
+	}
+	end := start + visible
+	if end > len(order) {
+		end = len(order)
+	}
+
+	for displayIdx := start; displayIdx < end; displayIdx++ {
+		t := m.tasks[order[displayIdx]]
+		line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
+		if displayIdx == m.cursor {
+			b.WriteString(markerStyle.Render("▌ ") + statusStyle(t.Status).Render(line) + "\n")
+		} else {
+			b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
+		}
+	}
+
+	scroll := ""
+	if len(order) > visible {
+		scroll = fmt.Sprintf("  [%d-%d/%d]", start+1, end, len(order))
+	}
+	b.WriteString("\n" + helpStyle.Render("j/k/↑/↓ move · gg top · G bottom · #j/k/G jump · r reverse · t tail · q quit"+scroll))
 	return b.String()
 }
 
