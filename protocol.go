@@ -34,6 +34,7 @@ type TaskView struct {
 	Status    string   `json:"status"`               // pending | running | done | failed
 	StartedMs int64    `json:"started_ms,omitempty"` // when a running task began
 	ElapsedMs int64    `json:"elapsed_ms,omitempty"` // final duration for done/failed
+	ExitCode  int      `json:"exit_code,omitempty"`  // process exit status for done/failed
 	Env       []string `json:"-"`                    // submit-time env; kept off the wire
 }
 

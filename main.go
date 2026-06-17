@@ -99,6 +99,11 @@ func main() {
 	}
 
 	if err != nil {
+		// A --wait command that finished non-zero propagates its own status
+		// without an extra "error:" line; the command's output already streamed.
+		if ee, ok := err.(*exitError); ok {
+			os.Exit(ee.code)
+		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}

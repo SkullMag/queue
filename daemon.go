@@ -177,8 +177,14 @@ func (d *daemon) worker() {
 		t.ElapsedMs = time.Since(start).Milliseconds()
 		if err != nil {
 			t.Status = "failed"
+			if ee, ok := err.(*exec.ExitError); ok {
+				t.ExitCode = ee.ExitCode()
+			} else {
+				t.ExitCode = 1 // couldn't start, etc.
+			}
 		} else {
 			t.Status = "done"
+			t.ExitCode = 0
 		}
 		d.mu.Unlock()
 		d.broadcast()

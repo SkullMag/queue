@@ -110,10 +110,21 @@ func waitTask(id int) error {
 		return fmt.Errorf("task %d disappeared (daemon restarted)", id)
 	}
 	if t.Status == "failed" {
-		return fmt.Errorf("task %d failed", id)
+		code := t.ExitCode
+		if code == 0 {
+			code = 1
+		}
+		return &exitError{code: code}
 	}
 	return nil
 }
+
+// exitError signals that the followed command finished non-zero; main exits
+// with its code (and prints nothing, since the command's own output already
+// streamed to the terminal).
+type exitError struct{ code int }
+
+func (e *exitError) Error() string { return fmt.Sprintf("command exited with status %d", e.code) }
 
 // stopDaemon asks a running daemon to exit (clearing its queue).
 func stopDaemon() error {
