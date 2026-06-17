@@ -19,7 +19,7 @@ var (
 	failedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
 	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("63"))
+	markerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
 )
 
 // displayName is the label shown for a task: its name if set, else the command.
@@ -300,8 +300,7 @@ func (m tuiModel) View() string {
 			line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
 			displayIdx := len(m.tasks) - 1 - i
 			if displayIdx == m.cursor {
-				line = "▌ " + line
-				b.WriteString(selectedStyle.Render(line) + "\n")
+				b.WriteString(markerStyle.Render("▌ ") + statusStyle(t.Status).Render(line) + "\n")
 			} else {
 				b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
 			}
@@ -310,8 +309,7 @@ func (m tuiModel) View() string {
 		for i, t := range m.tasks {
 			line := fmt.Sprintf("%3d  %s  %-7s  %s", t.ID, statusSymbol(t.Status), elapsedString(t), displayName(t))
 			if i == m.cursor {
-				line = "▌ " + line
-				b.WriteString(selectedStyle.Render(line) + "\n")
+				b.WriteString(markerStyle.Render("▌ ") + statusStyle(t.Status).Render(line) + "\n")
 			} else {
 				b.WriteString(statusStyle(t.Status).Render("  "+line) + "\n")
 			}
