@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -86,10 +87,13 @@ type tuiModel struct {
 	width  int
 	height int
 
-	// tail mode: when set, the body shows a live view of one task's log.
-	tailing bool
-	tailID  int
-	tailLog string
+	// tail mode: when set, the body shows a scrollable view of one task's
+	// log. The viewport follows the bottom (like `tail -f`) unless the user
+	// scrolls up.
+	tailing  bool
+	tailID   int
+	tailLog  string
+	viewport viewport.Model
 
 	// for vim-style gg movement
 	lastKey     string
@@ -158,6 +162,14 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if m.tailing {
+			atBottom := m.viewport.AtBottom()
+			m.viewport.Width = m.width
+			m.viewport.Height = m.tailHeight()
+			if atBottom {
+				m.viewport.GotoBottom()
+			}
+		}
 	case tea.KeyMsg:
 		if m.tailing {
 			switch msg.String() {
@@ -166,8 +178,20 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q", "esc", "t":
 				m.tailing = false
 				m.tailLog = ""
+				return m, nil
+			case "g", "home":
+				m.viewport.GotoTop()
+				return m, nil
+			case "G", "end":
+				m.viewport.GotoBottom()
+				return m, nil
 			}
-			return m, nil
+			// Delegate scrolling (j/k, ↑/↓, ctrl+u/d, pgup/pgdn, etc.)
+			// to the viewport. Following the bottom resumes automatically
+			// once the user scrolls back down to it.
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		}
 		key := msg.String()
 
@@ -241,6 +265,9 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tailing = true
 				m.tailID = t.ID
 				m.tailLog = readLog(m.tailID)
+				m.viewport = viewport.New(m.width, m.tailHeight())
+				m.viewport.SetContent(m.tailLog)
+				m.viewport.GotoBottom()
 			}
 		default:
 			// Clear count buffer on unrecognized key
@@ -264,7 +291,14 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case tickMsg:
 		if m.tailing {
-			m.tailLog = readLog(m.tailID)
+			if log := readLog(m.tailID); log != m.tailLog {
+				m.tailLog = log
+				atBottom := m.viewport.AtBottom()
+				m.viewport.SetContent(log)
+				if atBottom {
+					m.viewport.GotoBottom()
+				}
+			}
 		}
 		return m, tick()
 	}
@@ -345,8 +379,18 @@ func (m tuiModel) View() string {
 	return b.String()
 }
 
-// tailView renders the live log of the selected task, showing the last lines
-// that fit on screen (newest at the bottom, like `tail -f`).
+// tailHeight is the number of rows available to the log viewport, reserving
+// space for the title (2 rows) and footer (2 rows).
+func (m tuiModel) tailHeight() int {
+	h := m.height - 4
+	if h < 1 {
+		return 1
+	}
+	return h
+}
+
+// tailView renders a scrollable view of the selected task's log. It follows
+// the bottom (like `tail -f`) until the user scrolls up.
 func (m tuiModel) tailView() string {
 	var head string
 	if t := findTaskView(m.tasks, m.tailID); t != nil {
@@ -359,18 +403,16 @@ func (m tuiModel) tailView() string {
 	b.WriteString(titleStyle.Render(head) + "\n\n")
 
 	if strings.TrimSpace(m.tailLog) == "" {
-		b.WriteString(pendingStyle.Render("  (no output yet)") + "\n")
+		b.WriteString(pendingStyle.Render("  (no output yet)"))
 	} else {
-		lines := strings.Split(strings.TrimRight(m.tailLog, "\n"), "\n")
-		// Reserve rows for the title (2), blank line, and footer (2).
-		max := m.height - 5
-		if max > 0 && len(lines) > max {
-			lines = lines[len(lines)-max:]
-		}
-		b.WriteString(strings.Join(lines, "\n") + "\n")
+		b.WriteString(m.viewport.View())
 	}
 
-	b.WriteString("\n" + helpStyle.Render("q/esc/t back · ctrl+c quit"))
+	follow := "following"
+	if !m.viewport.AtBottom() {
+		follow = fmt.Sprintf("%3.0f%%", m.viewport.ScrollPercent()*100)
+	}
+	b.WriteString("\n" + helpStyle.Render(fmt.Sprintf("j/k/↑/↓ scroll · ctrl+u/d page · g/G top/bottom · [%s] · q/esc/t back · ctrl+c quit", follow)))
 	return b.String()
 }
 

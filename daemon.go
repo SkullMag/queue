@@ -112,6 +112,12 @@ func (d *daemon) handle(conn net.Conn) {
 			d.writeState(conn)
 			conn.Close()
 			return
+		case "clear":
+			n := d.clear()
+			data, _ := json.Marshal(ClearedMsg{Type: "cleared", Cleared: n})
+			conn.Write(append(data, '\n'))
+			conn.Close()
+			return
 		case "shutdown":
 			conn.Close()
 			os.Remove(sockPath())
@@ -148,10 +154,39 @@ func (d *daemon) add(cmd, name, dir string, env []string) int {
 	return id
 }
 
+// clear empties the queue, keeping only the currently running task: finished
+// tasks are dropped and pending tasks are marked canceled so the worker skips
+// them when it dequeues them. Returns the number of tasks removed.
+func (d *daemon) clear() int {
+	d.mu.Lock()
+	var kept []*TaskView
+	removed := 0
+	for _, t := range d.tasks {
+		switch t.Status {
+		case "running":
+			kept = append(kept, t) // can't be removed mid-flight
+		case "pending":
+			t.Status = "canceled" // worker skips it when it comes off the channel
+			removed++
+		default: // done | failed
+			removed++
+		}
+	}
+	d.tasks = kept
+	d.mu.Unlock()
+	d.broadcast()
+	return removed
+}
+
 // worker runs queued tasks one at a time.
 func (d *daemon) worker() {
 	for t := range d.work {
 		d.mu.Lock()
+		if t.Status == "canceled" {
+			// Cleared out of the queue before it could start; drop it.
+			d.mu.Unlock()
+			continue
+		}
 		t.Status = "running"
 		t.StartedMs = time.Now().UnixMilli()
 		d.mu.Unlock()

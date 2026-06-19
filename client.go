@@ -141,6 +141,33 @@ func stopDaemon() error {
 	return nil
 }
 
+// clearQueue empties a running daemon's queue, leaving the daemon (and any
+// currently running task) alone.
+func clearQueue() error {
+	conn, err := net.Dial("unix", sockPath())
+	if err != nil {
+		fmt.Println("queue is empty (no daemon running)")
+		return nil
+	}
+	defer conn.Close()
+	if err := json.NewEncoder(conn).Encode(Request{Type: "clear"}); err != nil {
+		return err
+	}
+	var msg ClearedMsg
+	if err := json.NewDecoder(conn).Decode(&msg); err != nil {
+		return err
+	}
+	switch msg.Cleared {
+	case 0:
+		fmt.Println("nothing to clear")
+	case 1:
+		fmt.Println("cleared 1 task")
+	default:
+		fmt.Printf("cleared %d tasks\n", msg.Cleared)
+	}
+	return nil
+}
+
 // showLog prints the captured output (stdout+stderr) of one task.
 func showLog(idStr string) error {
 	id, err := strconv.Atoi(idStr)

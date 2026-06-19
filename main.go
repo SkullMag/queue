@@ -16,6 +16,7 @@ usage:
                               --reverse/-r shows newest tasks first
   queue logs <id>             print the output of a task by its id
   queue tail [id]             follow a task's output live (running task if no id)
+  queue clear                 empty the queue (keeps the daemon and running task)
   queue stop                  stop the daemon and clear the queue
   queue install               always-run the daemon via a launchd agent
   queue uninstall             remove the launchd agent
@@ -76,6 +77,8 @@ func main() {
 			reverse = true
 		}
 		err = listTasks(reverse)
+	case args[0] == "clear":
+		err = clearQueue()
 	case args[0] == "stop":
 		err = stopDaemon()
 	case args[0] == "install":

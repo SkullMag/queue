@@ -10,7 +10,7 @@ import (
 
 // Request is sent client -> daemon.
 type Request struct {
-	Type string   `json:"type"`           // "add" | "subscribe" | "list" | "shutdown"
+	Type string   `json:"type"`           // "add" | "subscribe" | "list" | "clear" | "shutdown"
 	Cmd  string   `json:"cmd,omitempty"`
 	Name string   `json:"name,omitempty"` // optional human-friendly job label
 	Dir  string   `json:"dir,omitempty"`  // working directory to run the command in
@@ -23,6 +23,13 @@ type Request struct {
 type AddedMsg struct {
 	Type string `json:"type"` // "added"
 	ID   int    `json:"id"`
+}
+
+// ClearedMsg is the daemon's reply to a "clear" request: it reports how many
+// tasks were removed from the queue.
+type ClearedMsg struct {
+	Type    string `json:"type"`    // "cleared"
+	Cleared int    `json:"cleared"` // number of tasks dropped or canceled
 }
 
 // TaskView is the daemon's view of a single task, sent to clients.

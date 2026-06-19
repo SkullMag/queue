@@ -25,6 +25,7 @@ queue add --name <label> <cmd> # submit with a human-friendly label (-n also wor
 queue ls                       # print a one-shot snapshot of the queue
 queue logs <id>                # print a task's captured output
 queue tail [id]                # follow a task's output live (running task if no id)
+queue clear                    # empty the queue (keeps the daemon and running task)
 queue stop                     # stop the daemon and clear the queue
 queue install                  # always-run the daemon via a launchd agent
 queue uninstall                # remove the launchd agent
@@ -67,9 +68,11 @@ queue add "go test ./..." "sleep 5"
 
 Status symbols: `○` pending · `◐` running · `✓` done · `✗` failed.
 
-In the TUI, move the selection with `↑`/`↓` (or `k`/`j`) and press `t` to tail
-the selected task's output live; `q`/`esc` returns to the list. Press `q` or
-`ctrl+c` to quit the TUI (the daemon keeps running).
+In the TUI, move the selection with `↑`/`↓` (or `k`/`j`) and press `t` to open
+the selected task's output in a scrollable view. It follows the bottom like
+`tail -f` until you scroll up (`k`/`↑`, `ctrl+u`/`ctrl+d` to page, `g`/`G` for
+top/bottom); scrolling back to the bottom resumes following. `q`/`esc` returns
+to the list. Press `q` or `ctrl+c` to quit the TUI (the daemon keeps running).
 
 ## Architecture
 
